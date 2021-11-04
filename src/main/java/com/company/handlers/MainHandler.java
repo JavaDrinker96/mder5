@@ -1,86 +1,95 @@
 package com.company.handlers;
 
-import com.company.exceptions.EmptyComparisonException;
-import com.company.exceptions.FilePathException;
 import com.company.services.MessageDigestService;
+import com.company.usecase.*;
 import com.company.utils.AlertUtil;
-import com.company.utils.FileUtil;
-import com.company.utils.StringUtil;
 import javafx.scene.control.Alert;
 import javafx.scene.control.TextField;
 import javafx.stage.Stage;
 
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.util.Locale;
-
 public class MainHandler {
-    private FileUtil fileUtil;
-    private AlertUtil alertUtil;
-    private StringUtil stringUtil;
-    MessageDigestService messageDigestService;
+
+    private final MessageDigestService messageDigestService;
+    private final AlertUtil alertUtil;
+    private TextField textField;
+
+    private final UseCaseStatusHandler comparePathsHandler = status -> {
+        if (status.getStatus() == UseCaseStatus.Status.LOADING) {
+            //All ok.
+        } else if (status.getStatus() == UseCaseStatus.Status.SUCCESS) {
+            handleCompareSuccess((ComparePathsUseCase.CompareResults) status.getMessage());
+        } else {
+            handleCompareError((ComparePathsUseCase.CompareResults) status.getMessage());
+        }
+    };
+
+    private final UseCaseStatusHandler getFilePathHandler = status -> {
+        if (status.getStatus() == UseCaseStatus.Status.LOADING) {
+            //All ok.
+        } else if (status.getStatus() == UseCaseStatus.Status.SUCCESS) {
+            handleGetPathSuccess((String) status.getMessage());
+        } else {
+            handleGetPathError();
+        }
+    };
+
 
     public MainHandler() {
-        fileUtil = new FileUtil();
         alertUtil = new AlertUtil();
-        stringUtil = new StringUtil();
         messageDigestService = new MessageDigestService();
     }
 
     public void setFilePathOfUserToTextField(TextField textField, Stage stage) {
-        try {
-            String path = fileUtil.getFilePathOfUser(stage);
-            textField.setText(path);
-        } catch (FilePathException e) {
-            alertUtil.showAlert("Ошибка", "Ошибка получения пути к указанному файлу", Alert.AlertType.ERROR);
+        //Bad, but why not?
+        this.textField = textField;
+        new GetFilePathUseCase().getFilePath(stage, getFilePathHandler);
+    }
+
+    // TODO: 02.11.2021 rename to maunalCompare
+    public void compareFieldsValues(TextField firstTextField, TextField secondTextField) {
+        new ComparePathsUseCase().comparePaths(
+                getFileHashByString(firstTextField.getText()),
+                getFileHashByString(secondTextField.getText()),
+                comparePathsHandler
+        );
+    }
+
+    // TODO: 02.11.2021 rename to automaticCompareHashes
+    public void compareHashes(TextField firstTextField, TextField secondTextField) {
+        new ComparePathsUseCase().comparePaths(
+                getFileHashByString(firstTextField.getText()),
+                getFileHashByString(secondTextField.getText()),
+                comparePathsHandler
+        );
+    }
+
+    public void setFileHashToField(String filePath, TextField textField) {
+        textField.setText(getFileHashByString(filePath));
+    }
+
+    private String getFileHashByString(String filePath) {
+        return new GetFileHashUseCase(messageDigestService, alertUtil).getFileHash(filePath);
+    }
+
+    private void handleCompareSuccess(ComparePathsUseCase.CompareResults results) {
+        if (results == ComparePathsUseCase.CompareResults.COMPARE_RESULTS_TRUE) {
+            alertUtil.showAlert("Результат сравнения", "Значения равны", Alert.AlertType.INFORMATION);
+        } else if (results == ComparePathsUseCase.CompareResults.COMPARE_RESULTS_FALSE) {
+            alertUtil.showAlert("Результат сравнения", "Значения не равны", Alert.AlertType.INFORMATION);
         }
     }
 
-    public void compareFieldsValues(TextField firstTextField, TextField secondTextField) {
-        compareStringValues(firstTextField.getText(), secondTextField.getText());
-    }
-
-    public void compareHashes(TextField firstTextField, TextField secondTextField){
-        String firstHash = getFileHashByString(firstTextField.getText());
-        String secondHash = getFileHashByString(secondTextField.getText());
-        compareStringValues(firstHash,secondHash);
-    }
-
-    private void compareStringValues(String firstString, String secondString){
-        try {
-            boolean comparisonResult = stringUtil.caseInsensitiveCompare(firstString, secondString);
-            if (comparisonResult) {
-                alertUtil.showAlert("Результат сравнения", "Значения равны", Alert.AlertType.INFORMATION);
-            } else {
-                alertUtil.showAlert("Результат сравнения", "Значения не равны", Alert.AlertType.INFORMATION);
-            }
-        } catch (EmptyComparisonException e) {
+    private void handleCompareError(ComparePathsUseCase.CompareResults message) {
+        if (message == ComparePathsUseCase.CompareResults.COMPARE_RESULTS_FAILURE) {
             alertUtil.showAlert("Ошибка", "Поля не могут быть пустыми", Alert.AlertType.ERROR);
         }
     }
 
-    public void setFileHashToField(String filePath, TextField textField) {
-            String hashInString = getFileHashByString(filePath);
-            textField.setText(hashInString);
+    private void handleGetPathSuccess(String path) {
+        textField.setText(path);
     }
 
-    private String getFileHashByString(String filePath) {
-        try {
-            FileInputStream inputStream = new FileInputStream(filePath);
-            byte[] hash = messageDigestService.compute(inputStream.readAllBytes());
-            inputStream.close();
-
-            return stringUtil.byteArrayToHexString(hash).toLowerCase(Locale.ROOT);
-        } catch (FileNotFoundException e) {
-            alertUtil.showAlert("Ошибка", "Файл не найден", Alert.AlertType.ERROR);
-
-            return "Error";
-        } catch (IOException e) {
-            alertUtil.showAlert("Ошибка", "Ошибка чтения файла", Alert.AlertType.ERROR);
-
-            return "Error";
-        }
+    private void handleGetPathError() {
+        alertUtil.showAlert("Ошибка", "Ошибка получения пути к указанному файлу", Alert.AlertType.ERROR);
     }
-
 }
